@@ -117,6 +117,21 @@ vim.o.showmode = false
 vim.schedule(function()
   vim.o.clipboard = ''
 end)
+
+-- Over SSH (e.g. on fo) there is no system clipboard. OSC 52 sends yanks to the
+-- local terminal's clipboard through the escape stream, so <leader>y still works.
+-- Paste stays local (Cmd-V): OSC 52 paste is unsupported by many terminals.
+if vim.env.SSH_TTY then
+  local osc52 = require 'vim.ui.clipboard.osc52'
+  local function paste()
+    return { vim.fn.split(vim.fn.getreg '"', '\n'), vim.fn.getregtype '"' }
+  end
+  vim.g.clipboard = {
+    name = 'OSC 52',
+    copy = { ['+'] = osc52.copy '+', ['*'] = osc52.copy '*' },
+    paste = { ['+'] = paste, ['*'] = paste },
+  }
+end
 --
 -- vim.g.clipboard = 'pbcopy'
 -- Enable break indent
