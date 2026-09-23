@@ -965,23 +965,38 @@ require('lazy').setup({
     end,
   },
   { -- Highlight, edit, and navigate code
+    -- `main` branch API: parsers are installed explicitly, and highlighting/indent are switched on
+    -- per buffer below. Needs the tree-sitter CLI (>= 0.26.1) and a C compiler to build parsers.
     'nvim-treesitter/nvim-treesitter',
+    branch = 'main',
+    lazy = false, -- the main branch does not support lazy-loading
     build = ':TSUpdate',
-    main = 'nvim-treesitter.config', -- Sets main module to use for opts
-    -- [[ Configure Treesitter ]] See `:help nvim-treesitter`
-    opts = {
-      ensure_installed = { 'bash', 'c', 'diff', 'html', 'lua', 'luadoc', 'markdown', 'markdown_inline', 'query', 'vim', 'vimdoc' },
-      -- Autoinstall languages that are not installed
-      auto_install = true,
-      highlight = {
-        enable = true,
-        -- Some languages depend on vim's regex highlighting system (such as Ruby) for indent rules.
-        --  If you are experiencing weird indenting issues, add the language to
-        --  the list of additional_vim_regex_highlighting and disabled languages for indent.
-        additional_vim_regex_highlighting = { 'ruby' },
-      },
-      indent = { enable = true, disable = { 'ruby' } },
-    },
+    config = function()
+      local ts = require 'nvim-treesitter'
+      -- Async; parsers that are already installed are skipped.
+      ts.install { 'bash', 'c', 'diff', 'html', 'lua', 'luadoc', 'markdown', 'markdown_inline', 'query', 'vim', 'vimdoc' }
+
+      -- Ruby's indent rules rely on vim's regex syntax, so it keeps both and skips TS indent.
+      local regex_too = { ruby = true }
+
+      vim.api.nvim_create_autocmd('FileType', {
+        group = vim.api.nvim_create_augroup('kickstart-treesitter', { clear = true }),
+        callback = function(args)
+          local lang = vim.treesitter.language.get_lang(args.match) or args.match
+          if not pcall(vim.treesitter.start, args.buf, lang) then
+            -- No parser yet (the old `auto_install`): fetch it if one exists; it's used from the
+            -- next time this filetype is opened.
+            if vim.list_contains(ts.get_available(), lang) then ts.install(lang) end
+            return
+          end
+          if regex_too[lang] then
+            vim.bo[args.buf].syntax = 'on'
+          else
+            vim.bo[args.buf].indentexpr = "v:lua.require'nvim-treesitter'.indentexpr()"
+          end
+        end,
+      })
+    end,
     -- There are additional nvim-treesitter modules that you can use to interact
     -- with nvim-treesitter. You should go explore a few and see what interests you:
     --
